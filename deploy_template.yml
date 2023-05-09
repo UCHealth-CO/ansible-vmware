@@ -1,0 +1,101 @@
+---
+- name: Playbook to deploy a VM from a template
+  hosts: "{{ match_host }}"
+  gather_facts: false
+  #vars:
+  #  network_connection:
+  #    - type: ethernet
+  #      mac: "{{ newvm.hw_eth0.macaddress }}"
+  pre_tasks:
+    - name: Deploy VM from Template
+      community.vmware.vmware_guest:
+        validate_certs: false
+        cluster: "{{ vmware_cluster }}"
+        folder: "{{ vmware_folder }}"
+        name: "{{ inventory_hostname | split('.') | first }}"
+        state: poweredon
+        template: "{{ vmware_template }}"
+        datacenter: "{{ vmware_datacenter }}"
+        datastore: "{{ vmware_datastore }}"
+        # Add another disk from an existing VMDK
+        #- filename: "[datastore1] testvms/testvm_2_1/testvm_2_1.vmdk"
+        disk:
+          - size_gb: "{{ vmware_disk0_sizegb }}"
+            datastore: "{{ vmware_datastore }}"
+            type: "{{ vmware_disk_type }}"
+            autoselect_datastore: yes
+        hardware:
+          memory_mb: "{{ vm_memory_mb }}"
+          num_cpus: "{{ vm_num_cpus }}"
+        networks:
+        - name: "{{ vmware_network0 }}"
+          device_type: "{{ vmware_nic_type }}"
+          ip: "{{ ansible_host }}"
+          netmask: "{{ vm_netmask }}"
+          gateway: "{{ vm_gateway }}"
+          #dns_servers: "{{ dns_servers }}"
+          domain: "{{ vm_domain }}"
+        wait_for_ip_address: true
+      delegate_to: localhost
+      register: newvm
+    - name: Show VM details
+      debug:
+        msg: "{{ newvm }}"
+      delegate_to: localhost
+    - name: Show MAC
+      debug:
+        msg: "{{ newvm.instance.hw_eth0.macaddress }}"
+      delegate_to: localhost
+    - name: Set network connection var
+      ansible.builtin.set_fact:
+        network_connection:
+          - type: ethernet
+            mac: "{{ newvm.instance.hw_eth0.macaddress }}"
+            state: up
+            ip:
+              dhcp: no
+              address:
+                - "{{ vmware_network0 }}/23"
+    - name: Set DNS servers for servers starting with a-
+      ansible.builtin.set_fact:
+        dns_servers: "{{ dns_servers_a }}"
+      when: inventory_hostname.startswith('a-')
+    - name: Set DNS servers for servers starting with h-
+      ansible.builtin.set_fact:
+        dns_servers: "{{ dns_servers_h }}"
+      when: inventory_hostname.startswith('h-')
+    - name: Tell NetworkManager not to manage DNS
+      community.general.ini_file:
+        path: /etc/NetworkManager/NetworkManager.conf
+        state: present
+        no_extra_spaces: yes
+        section: main
+        option: dns
+        value: none
+        owner: root
+        group: root
+        mode: 0644
+        backup: yes
+      become: true
+      notify:
+        - reload NetworkManager
+    - name: Update resolv.conf
+      template:
+        src: resolv.conf.j2
+        dest: /etc/resolv.conf
+        owner: root
+        group: root
+        mode: 0644
+        backup: yes
+      become: true
+      notify:
+        - reload NetworkManager
+  roles:
+    - role: rhel-system-roles.network
+      become: yes
+
+  handlers:
+    - name: reload NetworkManager
+      service:
+        name: NetworkManager
+        state: reloaded
