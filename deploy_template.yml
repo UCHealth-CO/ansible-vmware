@@ -2,10 +2,8 @@
 - name: Playbook to deploy a VM from a template
   hosts: "{{ match_host }}"
   gather_facts: false
-  #vars:
-  #  network_connection:
-  #    - type: ethernet
-  #      mac: "{{ newvm.hw_eth0.macaddress }}"
+  vars:
+    storage_pools: "{{ vm_storage }}"
   pre_tasks:
     - name: Deploy VM from Template
       community.vmware.vmware_guest:
@@ -16,14 +14,10 @@
         state: poweredon
         template: "{{ vmware_template }}"
         datacenter: "{{ vmware_datacenter }}"
-        datastore: "{{ vmware_datastore }}"
+        datastore: "{{ disks[0].datastore }}"
         # Add another disk from an existing VMDK
         #- filename: "[datastore1] testvms/testvm_2_1/testvm_2_1.vmdk"
-        disk:
-          - size_gb: "{{ vmware_disk0_sizegb }}"
-            datastore: "{{ vmware_datastore }}"
-            type: "{{ vmware_disk_type }}"
-            autoselect_datastore: yes
+        disk: "{{ disks }}"
         hardware:
           memory_mb: "{{ vm_memory_mb }}"
           num_cpus: "{{ vm_num_cpus }}"
@@ -92,6 +86,8 @@
         - reload NetworkManager
   roles:
     - role: rhel-system-roles.network
+      become: yes
+    - role: rhel-system-roles.storage
       become: yes
 
   handlers:
