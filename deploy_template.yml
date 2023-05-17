@@ -4,9 +4,23 @@
   gather_facts: false
   vars:
     storage_pools: "{{ vm_storage }}"
+    #kernel_settings_sysctl:
+    #  - name: net.ipv6.conf.all.disable
+    #    value: 1
+    #  - name: net.ipv6.conf.default.disable_ipv6
+    #    value: 1
   pre_tasks:
+    - name: Set DNS servers for servers starting with a-
+      ansible.builtin.set_fact:
+        dns_servers: "{{ dns_servers_a }}"
+      when: inventory_hostname.startswith('a-')
+    - name: Set DNS servers for servers starting with h-
+      ansible.builtin.set_fact:
+        dns_servers: "{{ dns_servers_h }}"
+      when: inventory_hostname.startswith('h-')
     - name: Deploy VM from Template
       community.vmware.vmware_guest:
+        hostname: "{{ vmware_host }}"
         validate_certs: false
         cluster: "{{ vmware_cluster }}"
         folder: "{{ vmware_folder }}"
@@ -27,9 +41,16 @@
           ip: "{{ ansible_host }}"
           netmask: "{{ vm_netmask }}"
           gateway: "{{ vm_gateway }}"
-          #dns_servers: "{{ dns_servers }}"
+          dns_servers: "{{ dns_servers }}"
           domain: "{{ vm_domain }}"
+        - name: "{{ vmware_network1 }}"
+          device_type: "{{ vmware_nic_type }}"
+          ip: "{{ vmware_ip1 }}"
+          netmask: "{{ vmware_netmask1 }}"
         wait_for_ip_address: true
+        customization:
+          dns_servers: "{{ dns_servers }}"
+          dns_suffix: "{{ dns_search }}"
       delegate_to: localhost
       register: newvm
     - name: Show VM details
@@ -47,51 +68,119 @@
             mac: "{{ newvm.instance.hw_eth0.macaddress }}"
             state: up
             ip:
+              ipv6_disabled: true
               dhcp: no
               address:
                 - "{{ vmware_network0 }}/23"
-    - name: Set DNS servers for servers starting with a-
-      ansible.builtin.set_fact:
-        dns_servers: "{{ dns_servers_a }}"
-      when: inventory_hostname.startswith('a-')
-    - name: Set DNS servers for servers starting with h-
-      ansible.builtin.set_fact:
-        dns_servers: "{{ dns_servers_h }}"
-      when: inventory_hostname.startswith('h-')
-    - name: Tell NetworkManager not to manage DNS
+    - name: set net.ipv6.conf.all.disable_ipv6
       community.general.ini_file:
-        path: /etc/NetworkManager/NetworkManager.conf
+        path: /etc/tuned/epic/tuned.conf
         state: present
         no_extra_spaces: yes
-        section: main
-        option: dns
-        value: none
-        owner: root
-        group: root
-        mode: 0644
-        backup: yes
-      become: true
-      notify:
-        - reload NetworkManager
-    - name: Update resolv.conf
-      template:
-        src: resolv.conf.j2
-        dest: /etc/resolv.conf
-        owner: root
-        group: root
-        mode: 0644
-        backup: yes
-      become: true
-      notify:
-        - reload NetworkManager
+        section: sysctl
+        option: net.ipv6.conf.all.disable_ipv6
+        value: 1
+      become: yes
+      notify: restart tuned
+    - name: set net.ipv6.conf.default.disable_ipv6
+      community.general.ini_file:
+        path: /etc/tuned/epic/tuned.conf
+        state: present
+        no_extra_spaces: yes
+        section: sysctl
+        option: net.ipv6.conf.default.disable_ipv6
+        value: 1
+      become: yes
+      notify: restart tuned
+    #    owner: root
+    #    group: root
+    #    mode: 0644
+    #    backup: yes
+    #- name: Tell NetworkManager not to manage DNS
+    #  community.general.ini_file:
+    #    path: /etc/NetworkManager/NetworkManager.conf
+    #    state: present
+    #    no_extra_spaces: yes
+    #    section: main
+    #    option: dns
+    #    value: none
+    #    owner: root
+    #    group: root
+    #    mode: 0644
+    #    backup: yes
+    #  become: true
+    #  notify:
+    #    - Reboot
+    #- name: Update resolv.conf
+    #  template:
+    #    src: resolv.conf.j2
+    #    dest: /etc/resolv.conf
+    #    owner: root
+    #    group: root
+    #    mode: 0644
+    #    backup: yes
+    #  become: true
+    #  notify:
+    #    - Reboot
+    - name: Install RPM with Satellite certificate
+      ansible.builtin.dnf:
+        name: "{{ rhsm.cert_rpm }}"
+        disable_gpg_check: true
+        state: present
+      when:
+      - rhsm is defined
+      - rhsm.cert_rpm is defined
+      become: yes
+    - name: Register with satellite
+      #block:
+      #- name: debug vars
+      #  debug:
+      #    msg: "{{ rhsm }}"
+      redhat_subscription:
+        state: "{{ rhsm.state }}"
+        server_hostname: "{{ rhsm.server_hostname }}"
+        activationkey: "{{ rhsm.activationkey }}"
+        org_id: "{{ rhsm.org_id }}"
+        #auto_attach: "{{ rhsm.auto_attach }}"
+        #pool_ids: "{{ rhsm.pool_ids }}"
+      when: rhsm is defined
+      register: rhsm
+      become: yes
+    - name: Enable the satellite repo
+      community.general.rhsm_repository:
+        name: satellite-client-6-for-rhel-8-x86_64-rpms
+        state: enabled
+      when:
+      - rhsm is defined
+      become: yes
+    - name: Install katello-agent and insights-client
+      ansible.builtin.dnf:
+        name:
+          - katello-agent
+          - insights-client
+        state: present
+      when:
+      - rhsm is defined
+      become: yes
   roles:
-    - role: rhel-system-roles.network
+    #- role: rhel-system-roles.network
+    #  become: yes
+    - role: linux-system-roles.storage
       become: yes
-    - role: rhel-system-roles.storage
-      become: yes
+    #- role: rhel-system-roles.kernel_settings
+    #  become: yes
+  #post_tasks:
 
   handlers:
-    - name: reload NetworkManager
+    - name: Reboot
+      ansible.builtin.reboot:
+      become: true
+    - name: restart tuned
       service:
-        name: NetworkManager
-        state: reloaded
+        name: tuned
+        state: restarted
+      become: true
+  #  - name: reload NetworkManager
+  #    service:
+  #      name: NetworkManager
+  #      state: reloaded
