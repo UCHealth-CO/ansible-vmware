@@ -19,6 +19,7 @@ cd ansible-vmware
 ```
 dnf install rhel-system-roles
 ansible-galaxy collection install -r collections/requirements.yml
+ansible-galaxy install -r roles/requirements.yml
 pip3.9 install pyVmomi
 pip3.9 install requests
 ```
@@ -27,6 +28,7 @@ pip3.9 install requests
 In Ansible Tower these values are configured using a "VMware vCenter" credential resource.
 
 ```
+export ANSIBLE_HOST_KEY_CHECKING=False
 export VMWARE_HOST=vcenterhostname.fqdn.com
 export VMWARE_USER=domain\\username
 export VMWARE_PASSWORD=password
