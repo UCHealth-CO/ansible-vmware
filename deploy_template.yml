@@ -53,15 +53,15 @@
           dns_suffix: "{{ dns_search }}"
       delegate_to: localhost
       register: newvm
-    - name: Add tag to VM
-      community.vmware.vmware_tag_manager:
-        hostname: "{{ vmware_host }}"
-        tag_names:
-          - exclude_backup
-        object_name: "{{ inventory_hostname | split('.') | first }}"
-        object_type: VirtualMachine
-        state: add
-      delegate_to: localhost
+    #- name: Add tag to VM
+    #  community.vmware.vmware_tag_manager:
+    #    hostname: "{{ vmware_host }}"
+    #    tag_names:
+    #      - exclude_backup
+    #    object_name: "{{ inventory_hostname | split('.') | first }}"
+    #    object_type: VirtualMachine
+    #    state: add
+    #  delegate_to: localhost
     - name: Show VM details
       debug:
         msg: "{{ newvm }}"
@@ -176,6 +176,8 @@
     #  become: yes
     - role: linux-system-roles.storage
       become: yes
+      when:
+      - vm_storage is defined
     #- role: rhel-system-roles.kernel_settings
     #  become: yes
   #post_tasks:
