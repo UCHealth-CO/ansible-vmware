@@ -35,6 +35,10 @@
         hardware:
           memory_mb: "{{ vm_memory_mb }}"
           num_cpus: "{{ vm_num_cpus }}"
+          num_cpu_cores_per_socket: "{{ vm_num_cpu_cores_per_socket }}"
+          hotadd_cpu: false
+          hotremove_cpu: false
+          hotadd_memory: false
         networks:
         - name: "{{ vmware_network0 }}"
           device_type: "{{ vmware_nic_type }}"
