@@ -18,6 +18,9 @@
       ansible.builtin.set_fact:
         dns_servers: "{{ dns_servers_h }}"
       when: inventory_hostname.startswith('h-')
+    #- name: Show FQDN
+    #  debug:
+    #    msg: "{{ inventory_hostname }}"
     - name: Deploy VM from Template
       community.vmware.vmware_guest:
         hostname: "{{ vmware_host }}"
@@ -53,6 +56,7 @@
           netmask: "{{ vmware_netmask1 }}"
         wait_for_ip_address: true
         customization:
+          #hostname: "{{ inventory_hostname }}"
           dns_servers: "{{ dns_servers }}"
           dns_suffix: "{{ dns_search }}"
           domain: "{{ vm_domain }}"
@@ -176,6 +180,20 @@
       when:
       - rhsm is defined
       become: yes
+    #- name: Set hostname to FQDN
+    #  ansible.builtin.hostname:
+    #    name: "{{ inventory_hostname }}"
+    #    use: systemd
+    #  become: yes
+    #- name: Update /etc/hostname
+    #  template:
+    #    src: hostname.j2
+    #    dest: /etc/hostname
+    #    owner: root
+    #    group: root
+    #    mode: 0644
+    #    backup: no
+    #  become: yes
   roles:
     #- role: rhel-system-roles.network
     #  become: yes
